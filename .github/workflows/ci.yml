@@ -1,0 +1,58 @@
+name: Continuous Integration
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Restore dependencies
+        run: dotnet restore DevOpsDemo/DevOpsDemo.csproj
+
+      - name: Build application
+        run: |
+          dotnet build DevOpsDemo/DevOpsDemo.csproj \
+            --configuration Release \
+            --no-restore
+
+      - name: Build Docker image
+        run: docker build -t devops-demo:ci ./DevOpsDemo
+
+      - name: Test Docker container
+        run: |
+          docker run -d -p 8080:8080 \
+            --name devops-demo devops-demo:ci
+
+          curl --fail \
+            --retry 10 \
+            --retry-connrefused \
+            --retry-delay 3 \
+            http://localhost:8080/health
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Terraform format check
+        run: terraform -chdir=terraform fmt -check
+
+      - name: Terraform init
+        run: terraform -chdir=terraform init -backend=false
+
+      - name: Terraform validate
+        run: terraform -chdir=terraform validate
